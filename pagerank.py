@@ -105,7 +105,7 @@ class WebGraph():
         else:
             v = torch.zeros(n)
             for i in range(n):
-                url = self._index_to_url(n)
+                url = self._index_to_url(i)
                 if url_satisfies_query(url, query):
                     v[i] = 1
             # torch.norm(v)
