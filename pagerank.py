@@ -108,7 +108,7 @@ class WebGraph():
                 url = self._index_to_url(n)
                 if url_satisfies_query(url, query):
                     v[i] = 1
-            torch.norm(v)
+            # torch.norm(v)
         
         v_sum = torch.sum(v)
         assert(v_sum>0)
@@ -138,6 +138,10 @@ class WebGraph():
                 x0 = torch.unsqueeze(x0,1)
             x0 /= torch.norm(x0)
 
+            nondangling = torch.sparse.sum(self.P, 1).indices()
+            a = torch.ones([n, 1])
+            a[nondangling] = 0
+
             # main loop
             xprev = x0
             x = xprev.detach().clone()
@@ -145,13 +149,7 @@ class WebGraph():
                 xprev = x.detach().clone()
                 q = alpha*x.t()@a + (1-alpha)*v.t()
                 x = torch.sparse.addmm(q.t(), self.P.t(), x, beta=1.0, alpha=alpha)
-                x = x/torm.norm(x)
-                # compute the new x vector using Eq (5.1)
-                # FIXME: Task 1
-                # HINT: this can be done with a single call to the `torch.sparse.addmm` function,
-                # but you'll have to read the code above to figure out what variables should get passed to that function
-                # and what pre/post processing needs to be done to them
-
+                x = x/torch.norm(x)
                 # output debug information
                 residual = torch.norm(x-xprev)
                 logging.debug(f'i={i} residual={residual}')
