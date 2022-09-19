@@ -104,11 +104,11 @@ class WebGraph():
 
         else:
             v = torch.zeros(n)
-            for i in range(n):
-                url = self._index_to_url(i)
+            for url,i in self.url_dict.items():
                 if url_satisfies_query(url, query):
                     v[i] = 1
-            # torch.norm(v)
+            v = torch.squeeze(v)
+            torch.norm(v)
         
         v_sum = torch.sum(v)
         assert(v_sum>0)
@@ -147,9 +147,9 @@ class WebGraph():
             x = xprev.detach().clone()
             for i in range(max_iterations):
                 xprev = x.detach().clone()
-                q = alpha*x.t()@a + (1-alpha)*v.t()
+                q = (alpha*x.t()@a + (1-alpha)) * v.t()
                 x = torch.sparse.addmm(q.t(), self.P.t(), x, beta=1.0, alpha=alpha)
-                x = x/torch.norm(x)
+                x /= torch.norm(x)
                 # output debug information
                 residual = torch.norm(x-xprev)
                 logging.debug(f'i={i} residual={residual}')
