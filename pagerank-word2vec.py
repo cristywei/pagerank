@@ -9,10 +9,8 @@ import math
 import torch
 import gzip
 import csv
-
 import logging
 import gensim.downloader as gensim
-
 vectors = gensim.load('glove-twitter-200')
 
 class WebGraph():
@@ -164,17 +162,6 @@ class WebGraph():
             return x.squeeze()
 
 
-    def similar_terms(word):
-        '''
-        gets the top 5 similar terms to the search query word
-        '''
-        similar = vectors.most_similar(word)
-
-        if len(similar) > 5:    # cuts the terms down to 5 words only to cut down on vaguely related terms
-            similar = similar[:5] 
-
-        return similar
-
     def search(self, pi, query='', max_results=10, p=45):
         '''
         Logs all urls that match the query.
@@ -182,56 +169,62 @@ class WebGraph():
         '''
         n = self.P.shape[0]
         vals,indices = torch.topk(pi,n)
-        simterms = []        
-        #score = 0
-        #let S be the set of words similar to the query string
-        #for each word in S:
-            #let n be the numebr of times word appears in a document
-            #let word_similarity be the similarity score of word
-            #score+=n*word_similarity**p
+        k = min(max_results, n)
        
-        urls = [self._index_to_url(index.item()) for index in indices]
-        ranks = [val.item() for val in vals]
-        scores = []
+        similar_terms = vectors.most_similar(args.search_query)
 
-        for word in query.split():
-            if word[0] != '-':  #dont find terms for the spaces
-                simterms = similar_terms(word)
+        for i in range(n):
+            n, score, w = 0, 0, 0
+            url = self._index_to_url(i)
 
-        if query == '': #empty query
-            scores = ranks
-        else:
-            for i, url in enumerate(urls):
-                score = 0
-                for pair in simterms:
-                    word = pair[0]
-                    n = url.count(word) #word count
-                    word_similarity = pair[1]
-                    score+=n*(word_similarity**p)
+            if sim_url_satisfies_query(url, query):
+                n += 1
+                w += s_weight
 
-                rank = ranks[i]*score
-                scores.append(rank)
-            urls_and_scores = list(zip(urls, scores))
-            urls_and_scores.sort(key=lambda a: a[1], reverse=True)
+            for word in range(10):
+                w = similar_terms[word][1]**p
 
+            score += new*weight_w
+            pi[i] += score
+       
         matches = 0
         for i in range(n):
             if matches >= max_results:
+                #print("debug break")
                 break
-            url = urls_and_scores[i][0]
-            url_score = urls_and_scores[i][1]
+            index = indices[i].item()
+            url = self._index_to_url(index)
+            pagerank = vals[i].item()
             if url_satisfies_query(url, query):
-                logging.info(f'rank={matches} rank={url_score:0.4e} url={url}')
+                #print("debug: success")
+                logging.info(f'rank={matches} rank={pagerank} url={url}')
                 matches += 1
             #url = url_score[i][0]
             #logging.info(f'rank={matches} pagerank={rank:0.4e} url={url}')
             #matches += 1
 
+def sim_url_satisfies_query(url, query):
+    satisfies = False
+    terms = query.split()
+    num_terms = 0
+    for term in terms:
+        if term[0] != '-':
+            num_terms += 1
+            if term in url:
+                satisfies = True
+    if num_terms == 0:
+        satisfies = True
+    for term in terms:
+        if term[0] == '-':
+            if term[1:] in url:
+                return False
+    return satisfies
+
+'''
 def similar_terms(word):
     similar = vectors.most_similar(word)
     if len(similar) > 5:
         similar = similar[:5]
-
     return similar
 
 def similar_terms_only(word):
@@ -240,7 +233,7 @@ def similar_terms_only(word):
         similar = similar[:5]
     actual_terms = [word[0] for word in similar]
     return actual_terms
-
+'''
 
 def url_satisfies_query(url, query):
     '''
@@ -276,10 +269,6 @@ def url_satisfies_query(url, query):
             num_terms+=1
             if term in url:
                 satisfies = True
-            else:
-                for word in similar_terms_only(term):
-                    if word in url:
-                        satisfies = True
     if num_terms==0:
         satisfies=True
 
