@@ -11,7 +11,7 @@ import gzip
 import csv
 import logging
 import gensim.downloader as gensim
-vectors = gensim.load('glove-twitter-200')
+vectors = gensim.load('glove-wiki-gigaword-100')
 
 class WebGraph():
 
@@ -169,71 +169,48 @@ class WebGraph():
         '''
         n = self.P.shape[0]
         vals,indices = torch.topk(pi,n)
-        k = min(max_results, n)
-       
-        similar_terms = vectors.most_similar(args.search_query)
 
-        for i in range(n):
-            n, score, w = 0, 0, 0
-            url = self._index_to_url(i)
+        words = query.split()
+        similar = []
+        for word in words:
+            if word[0] != '-':
+                similar += similar_terms(word)
 
-            if sim_url_satisfies_query(url, query):
-                n += 1
-                w += s_weight
+        urls = [self._index_to_url(index.item()) for index in indices]
+        pagerank = [val.item() for val in vals]
+        
+        if query != '':
+            scores = [0 for url in urls]
+            for i, url in enumerate(urls):
+                for word, score in similar:
+                    scores[i] += url.count(word) * (score**p)
+        else:
+            scores = [1 for url in urls]
 
-            for word in range(10):
-                w = similar_terms[word][1]**p
+        ranked = [(urls[i], pagerank[i]*scores[i]) for i in range(len(scores))]
+        ranked.sort(key=lambda a: a[1], reverse=True)
 
-            score += new*weight_w
-            pi[i] += score
-       
         matches = 0
         for i in range(n):
             if matches >= max_results:
-                #print("debug break")
                 break
-            index = indices[i].item()
-            url = self._index_to_url(index)
-            pagerank = vals[i].item()
-            if url_satisfies_query(url, query):
-                #print("debug: success")
-                logging.info(f'rank={matches} rank={pagerank} url={url}')
+            if url_satisfies_query(ranked[i][0], query):
+                logging.info(f'rank={matches} ranking={ranked[i][1]:0.4e} url={ranked[i][0]}')
                 matches += 1
-            #url = url_score[i][0]
-            #logging.info(f'rank={matches} pagerank={rank:0.4e} url={url}')
-            #matches += 1
+            
+def similar_terms_only(term):
+    similar_terms = vectors.most_similar(term)
+    if len(similar_terms) > 5:
+        similar_terms = similar_terms[:5]
+    only_terms = [term[0] for term in similar_terms]
+    return only_terms
 
-def sim_url_satisfies_query(url, query):
-    satisfies = False
-    terms = query.split()
-    num_terms = 0
-    for term in terms:
-        if term[0] != '-':
-            num_terms += 1
-            if term in url:
-                satisfies = True
-    if num_terms == 0:
-        satisfies = True
-    for term in terms:
-        if term[0] == '-':
-            if term[1:] in url:
-                return False
-    return satisfies
 
-'''
-def similar_terms(word):
-    similar = vectors.most_similar(word)
-    if len(similar) > 5:
-        similar = similar[:5]
-    return similar
-
-def similar_terms_only(word):
-    similar = vectors.most_similar(word)
-    if len(similar) > 5:
-        similar = similar[:5]
-    actual_terms = [word[0] for word in similar]
-    return actual_terms
-'''
+def similar_terms(term):
+    similar_terms = vectors.most_similar(term)
+    if len(similar_terms) > 5:
+        similar_terms = similar_terms[:5]
+    return similar_terms
 
 def url_satisfies_query(url, query):
     '''
@@ -242,7 +219,6 @@ def url_satisfies_query(url, query):
     But, if a word is preceded by the negation sign `-`,
     then the function returns False if that word is present in the url,
     even if it would otherwise return True.
-
     >>> url_satisfies_query('www.lawfareblog.com/covid-19-speech', 'covid')
     True
     >>> url_satisfies_query('www.lawfareblog.com/covid-19-speech', 'coronavirus covid')
@@ -263,21 +239,24 @@ def url_satisfies_query(url, query):
     satisfies = False
     terms = query.split()
 
-    num_terms=0
+    num_terms = 0
     for term in terms:
         if term[0] != '-':
-            num_terms+=1
+            num_terms += 1
             if term in url:
                 satisfies = True
-    if num_terms==0:
-        satisfies=True
-
+            else:
+                for word in similar_terms_only(term):
+                    if word in url:
+                        satisfies = True
+    if num_terms == 0:
+        satisfies = True
+    
     for term in terms:
         if term[0] == '-':
             if term[1:] in url:
                 return False
     return satisfies
-
 
 if __name__=='__main__':
     import argparse
